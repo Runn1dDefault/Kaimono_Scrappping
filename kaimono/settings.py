@@ -6,6 +6,8 @@
 #     https://docs.scrapy.org/en/latest/topics/settings.html
 #     https://docs.scrapy.org/en/latest/topics/downloader-middleware.html
 #     https://docs.scrapy.org/en/latest/topics/spider-middleware.html
+from decouple import config
+
 
 BOT_NAME = "kaimono"
 
@@ -13,14 +15,21 @@ SPIDER_MODULES = ["kaimono.spiders"]
 NEWSPIDER_MODULE = "kaimono.spiders"
 
 DATABASE_SETTINGS = {
-    
+    "dbname": config('POSTGRES_DB'),
+    "user": config('POSTGRES_USER'),
+    "password": config('POSTGRES_PASSWORD'),
+    "host": config('POSTGRES_HOST'),
+    "port": config('POSTGRES_PORT', cast=int)
 }
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
-#USER_AGENT = "kaimono (+http://www.yourdomain.com)"
+USER_AGENT = (
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) '
+    'Chrome/100.0.4896.75 Safari/537.36'
+)
 
 # Obey robots.txt rules
-ROBOTSTXT_OBEY = True
+ROBOTSTXT_OBEY = False
 
 # Configure maximum concurrent requests performed by Scrapy (default: 16)
 #CONCURRENT_REQUESTS = 32
@@ -65,9 +74,9 @@ ROBOTSTXT_OBEY = True
 
 # Configure item pipelines
 # See https://docs.scrapy.org/en/latest/topics/item-pipeline.html
-#ITEM_PIPELINES = {
-#    "kaimono.pipelines.KaimonoPipeline": 300,
-#}
+ITEM_PIPELINES = {
+    "kaimono.pipelines.PSQLPipeline": 300,
+}
 
 # Enable and configure the AutoThrottle extension (disabled by default)
 # See https://docs.scrapy.org/en/latest/topics/autothrottle.html
@@ -87,7 +96,7 @@ ROBOTSTXT_OBEY = True
 #HTTPCACHE_ENABLED = True
 #HTTPCACHE_EXPIRATION_SECS = 0
 #HTTPCACHE_DIR = "httpcache"
-#HTTPCACHE_IGNORE_HTTP_CODES = []
+HTTPCACHE_IGNORE_HTTP_CODES = [400, 401, 403, 404, 408, 429, 500, 502, 503, 504, 522, 524]
 #HTTPCACHE_STORAGE = "scrapy.extensions.httpcache.FilesystemCacheStorage"
 
 # Set settings whose default value is deprecated to a future-proof value
