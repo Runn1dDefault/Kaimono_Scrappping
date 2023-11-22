@@ -38,11 +38,11 @@ class ProductItem(scrapy.Item):
     description = scrapy.Field()
     site_price = scrapy.Field()
     site_avg_rating = scrapy.Field()
-    site_rating_count = scrapy.Field()
+    site_reviews_count = scrapy.Field()
 
     class Meta(PSQLItemMeta):
         db_table = "products_product"
-        fields = ("id", "name", "description", "site_price", "site_avg_rating", "site_rating_count")
+        fields = ("id", "name", "description", "site_price", "site_avg_rating", "site_reviews_count")
         match_fields = ("id",)
 
 
@@ -103,6 +103,6 @@ class ProductQuantityItem(scrapy.Item):
     status_code = scrapy.Field()
 
     class Meta(PSQLItemMeta):
-        db_table = "products_productquantity"
+        db_table = "products_productinventory"
         fields = ("product_id", "color", "color_image_url", "size", "quantity", "site_unit_price", "status_code")
         match_fields = ("product_id", "color", "size")

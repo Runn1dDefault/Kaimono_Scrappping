@@ -141,7 +141,7 @@ class RakutenSpider(scrapy.Spider):
             product_loader.add_value("description", item["itemCaption"])
             product_loader.add_value("site_price", item["itemPrice"])
             product_loader.add_value("site_avg_rating", item["reviewAverage"])
-            product_loader.add_value("site_rating_count", item["reviewCount"])
+            product_loader.add_value("site_reviews_count", item["reviewCount"])
 
             for category_id in categories_tree:
                 category_loader.add_value("product_id", item_id)

@@ -110,7 +110,7 @@ class UniqloSpider(scrapy.Spider):
         loader.add_value("description", response_data['longDescription'])
         loader.add_value("site_price", response_data['prices']['base']['value'])
         loader.add_value("site_avg_rating", response_data['rating'].get('average', 0.0))
-        loader.add_value("site_rating_count", response_data['rating'].get('count', 0))
+        loader.add_value("site_reviews_count", response_data['rating'].get('count', 0))
         yield loader.load_item()
 
         images_data = response_data['images']
