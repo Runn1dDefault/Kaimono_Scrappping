@@ -24,7 +24,6 @@ class RakutenCategorySpider(scrapy.Spider):
     RAKUTEN_APP_IDS = (
         "1006081949539677212",
         "1032684706123538391",
-        "1027393930619954222"
     )
     custom_settings = {
         'LOG_LEVEL': 'INFO',
