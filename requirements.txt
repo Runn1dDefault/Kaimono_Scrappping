@@ -23,6 +23,7 @@ pyasn1-modules==0.3.0
 pycparser==2.21
 PyDispatcher==2.0.7
 pyOpenSSL==23.3.0
+python-decouple==3.8
 queuelib==1.6.2
 requests==2.31.0
 requests-file==1.5.1
@@ -35,3 +36,4 @@ typing_extensions==4.8.0
 urllib3==2.1.0
 w3lib==2.1.2
 zope.interface==6.1
+scrapyd==1.4.3

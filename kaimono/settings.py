@@ -15,11 +15,11 @@ SPIDER_MODULES = ["kaimono.spiders"]
 NEWSPIDER_MODULE = "kaimono.spiders"
 
 DATABASE_SETTINGS = {
-    "dbname": config('POSTGRES_DB'),
-    "user": config('POSTGRES_USER'),
-    "password": config('POSTGRES_PASSWORD'),
-    "host": config('POSTGRES_HOST'),
-    "port": config('POSTGRES_PORT', cast=int)
+    "dbname": config('PRIMARY_DB'),
+    "user": config('PRIMARY_USER'),
+    "password": config('PRIMARY_PASSWORD'),
+    "host": config('PRIMARY_HOST'),
+    "port": config('PRIMARY_PORT', cast=int)
 }
 
 # Crawl responsibly by identifying yourself (and your website) on the user-agent
