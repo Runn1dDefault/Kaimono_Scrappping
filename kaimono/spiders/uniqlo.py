@@ -66,6 +66,8 @@ class UniqloSpider(scrapy.Spider):
     PRICES_API_URL = BASE_API_URL + ("/{product_id}/price-groups/{price_group}/l2s"
                                      "?withPrices=true&withStocks=true&includePreviousPrice=false&httpFailure=true")
 
+    ITEM_URL = "https://www.uniqlo.com/us/en/products/{item_code}/"
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         connection = psycopg2.connect(**DATABASE_SETTINGS)
@@ -111,6 +113,7 @@ class UniqloSpider(scrapy.Spider):
         loader.add_value("site_price", response_data['prices']['base']['value'])
         loader.add_value("site_avg_rating", response_data['rating'].get('average', 0.0))
         loader.add_value("site_reviews_count", response_data['rating'].get('count', 0))
+        loader.add_value("product_url", self.ITEM_URL.format(product_id))
         yield loader.load_item()
 
         images_data = response_data['images']
