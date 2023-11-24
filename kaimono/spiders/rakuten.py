@@ -151,17 +151,21 @@ class RakutenSpider(scrapy.Spider):
                 image_loader.add_value("product_id", item_id)
                 image_loader.add_value("url", url)
 
+            request_to_tags = []
+
             for tag_id in item["tagIds"]:
                 db_tag_id = build_rakuten_id(tag_id)
 
                 if db_tag_id not in site_tags(self.psql_con, self.name):
-                    yield scrapy.Request(
-                        url=self.TAG_API_URL.format(
-                            app_id=random_rakuten_app_id(self.RAKUTEN_APP_IDS),
-                            tag_id=tag_id
-                        ),
-                        callback=self.parse_tag,
-                        meta={"product_id": item_id, 'tag_id': db_tag_id}
+                    request_to_tags.append(
+                        scrapy.Request(
+                            url=self.TAG_API_URL.format(
+                                app_id=random_rakuten_app_id(self.RAKUTEN_APP_IDS),
+                                tag_id=tag_id
+                            ),
+                            callback=self.parse_tag,
+                            meta={"product_id": item_id, 'tag_id': db_tag_id}
+                        )
                     )
                     continue
 
@@ -174,6 +178,9 @@ class RakutenSpider(scrapy.Spider):
         yield category_loader.load_item()
         yield image_loader.load_item()
         yield product_tag_loader.load_item()
+
+        for request in request_to_tags:
+            yield request
 
         page_num = response.meta['page_num']
         pages_count = response_data['pageCount']
