@@ -96,12 +96,34 @@ def delete_products_by_ids(conn, product_ids: Iterable[str]):
         raise Exception(f"Failed to delete products by ids: {e}")
 
 
-def site_tags(conn, site):
-    sql = f"SELECT id FROM products_tag WHERE id like '{site}%'"
+def tag_exists(conn, tag_id):
+    sql = "SELECT EXISTS (SELECT 1 FROM products_tag WHERE id = %s)"
+
     try:
         with conn.cursor() as cur:
-            cur.execute(sql)
-            return cur.fetchall()
+            cur.execute(sql, (tag_id,))
+            return bool(cur.fetchone()[0])
     except Exception as e:
         conn.rollback()
-        raise Exception(f"Failed to get tag ids for site {site}: {e}")
+        raise Exception(f"Failed to check tag id to exist {tag_id}: {e}")
+
+
+def get_product_variation_id(conn, category_id, catch_copy, shop_code):
+    sql = """
+    SELECT p.id FROM products_product p
+    INNER JOIN products_product_categories pc ON p.id = pc.product_id
+    INNER JOIN products_category c ON pc.category_id = c.id
+    WHERE 
+        c.id = %s 
+        AND p.catch_copy = %s 
+        AND p.shop_code = %s
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (category_id, catch_copy, shop_code))
+            result = cur.fetchone()
+            return result[0] if result is not None else None
+    except Exception as e:
+        conn.rollback()
+        raise Exception(f"Failed to get product variation: {e}")
+
