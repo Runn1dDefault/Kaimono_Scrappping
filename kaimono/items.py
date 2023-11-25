@@ -40,10 +40,13 @@ class ProductItem(scrapy.Item):
     site_avg_rating = scrapy.Field()
     site_reviews_count = scrapy.Field()
     product_url = scrapy.Field()
+    catch_copy = scrapy.Field()
+    shop_code = scrapy.Field()
 
     class Meta(PSQLItemMeta):
         db_table = "products_product"
-        fields = ("id", "name", "description", "site_price", "site_avg_rating", "site_reviews_count", "product_url")
+        fields = ("id", "name", "description", "site_price", "site_avg_rating", "site_reviews_count",
+                  "product_url", "catch_copy", "shop_code")
         match_fields = ("id",)
 
 
@@ -107,3 +110,28 @@ class ProductQuantityItem(scrapy.Item):
         db_table = "products_productinventory"
         fields = ("product_id", "color", "color_image_url", "size", "quantity", "site_unit_price", "status_code")
         match_fields = ("product_id", "color", "size")
+
+
+class ProductVariationItem(scrapy.Item):
+    id = scrapy.Field()
+    product_id = scrapy.Field()
+    name = scrapy.Field()
+    site_unit_price = scrapy.Field()
+    product_url = scrapy.Field()
+
+    class Meta(PSQLItemMeta):
+        db_table = "products_variation"
+        fields = ("id", "product_id", "catch_copy", "shop_code", "shop_name", "shop_name", "name",
+                  "site_unit_price", "product_url")
+        match_fields = ("id",)
+
+
+class VariationTagItem(scrapy.Item):
+    variation_id = scrapy.Field()
+    tag_id = scrapy.Field()
+
+    class Meta(PSQLItemMeta):
+        db_table = "products_variation_tags"
+        fields = ("variation_id", "tag_id")
+        match_fields = ("variation_id", "tag_id")
+        do_update = False

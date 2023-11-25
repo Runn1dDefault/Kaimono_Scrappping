@@ -5,7 +5,7 @@ from typing import Any
 import psycopg2
 from psycopg2.extras import execute_values
 
-from kaimono.items import PSQLItemMeta, ProductCategoryItem
+from kaimono.items import PSQLItemMeta
 from kaimono.settings import DATABASE_SETTINGS
 
 
@@ -147,25 +147,21 @@ class PSQLPipeline:
     def check_exists(self, table_name: str, **matches) -> bool:
         try:
             condition = " AND ".join([f"{field} = '{value}'" for field, value in matches.items()])
-            sql = self.SQL_EXISTS.format(
-                fields=", ".join(matches.keys()),
-                table_name=table_name,
-                condition=condition
-            )
+            sql = self.SQL_EXISTS.format(table_name=table_name, condition=condition)
             self.cur.execute(sql)
             return bool(self.cur.fetchone()[0])
         except Exception as e:
             self.conn.rollback()
             self.logger.error(f"Failed to process item on check to exists: {e}")
 
-    def create(self, table_name, fields: tuple[str], values: list[tuple[Any | None]]) -> None:
+    def create(self, table_name, fields: list[str], values: list[tuple[Any | None]]) -> None:
         try:
             sql = self.SQL_INSERT.format(
                 table_name=table_name,
                 fields=", ".join(fields)
             )
             execute_values(self.cur, sql, values)
-            self.logger.info("Saved to DB: %s" % len(values))
+            self.logger.info("Saved to %s: %s" % (table_name, len(values)))
         except Exception as e:
             self.conn.rollback()
             self.logger.error(f"Failed to process item on creating: {e}")
@@ -176,7 +172,7 @@ class PSQLPipeline:
     def update(
         self,
         table_name: str,
-        fields: tuple[str],
+        fields: list[str],
         match_fields: tuple[str],
         values: list[tuple[Any | None]]
     ) -> None:
@@ -192,7 +188,7 @@ class PSQLPipeline:
                 condition=conditions
             )
             execute_values(self.cur, sql, values)
-            self.logger.info("Updated in DB: %s" % len(values))
+            self.logger.info("Updated in %s: %s" % (table_name, len(values)))
         except Exception as e:
             self.conn.rollback()
             self.logger.error(f"Failed to process item on updating: {e}")

@@ -8,9 +8,11 @@ from scrapy import Request
 from scrapy.http import Response
 from scrapy.loader import ItemLoader
 
-from kaimono.items import CategoryItem, ProductItem, ProductCategoryItem, ProductImageItem, TagItem, ProductTagItem
+from kaimono.items import CategoryItem, ProductItem, ProductCategoryItem, ProductImageItem, TagItem, ProductTagItem, \
+    ProductVariationItem, VariationTagItem
 from kaimono.settings import DATABASE_SETTINGS
-from kaimono.utils import build_rakuten_id, category_ids_for_scrape, get_genres_tree, get_site_id_from_db_id, site_tags
+from kaimono.utils import build_rakuten_id, category_ids_for_scrape, get_genres_tree, get_site_id_from_db_id, \
+    tag_exists, get_product_variation_id
 
 RAKUTEN_BASE_URL = "https://app.rakuten.co.jp/"
 
@@ -29,9 +31,7 @@ class RakutenCategorySpider(scrapy.Spider):
     )
     custom_settings = {
         'LOG_LEVEL': 'INFO',
-        "DEFAULT_REQUEST_HEADERS": {
-            "Content-Type": "application/json"
-        },
+        "DEFAULT_REQUEST_HEADERS": {"Content-Type": "application/json"},
         "CONCURRENT_REQUESTS": len(RAKUTEN_APP_IDS)
     }
     API_URL = RAKUTEN_BASE_URL + ("services/api/IchibaGenre/Search/20120723"
@@ -116,6 +116,8 @@ class RakutenSpider(scrapy.Spider):
             )
 
     def parse(self, response: Response, **kwargs: Any) -> Any:
+        # TODO: перевести бренды
+        # TODO: определять вариации продукта по catchcopy и продавцу
         response_data = json.loads(response.body)
 
         tags_info = response_data['TagInformation']
@@ -127,17 +129,54 @@ class RakutenSpider(scrapy.Spider):
         categories_tree = get_genres_tree(self.psql_con, category_id)
 
         product_loader = ItemLoader(ProductItem())
+        variation_loader = ItemLoader(ProductVariationItem())
         category_loader = ItemLoader(ProductCategoryItem())
         image_loader = ItemLoader(ProductImageItem())
         product_tag_loader = ItemLoader(ProductTagItem())
+        variation_tag_loader = ItemLoader(VariationTagItem())
 
         processed_product_ids = set()
+        catch_copies = {}
         request_to_tags = []
 
         for item in response_data['Items']:
             item_id = build_rakuten_id(item["itemCode"])
 
             if item_id in processed_product_ids:
+                continue
+
+            shop_code = item["shopCode"]
+            catch_copy = item["catchcopy"]
+            variation_id = catch_copies.get(shop_code + catch_copy)
+            if not variation_id:
+                variation_id = get_product_variation_id(self.psql_con, category_id, catch_copy, shop_code)
+
+            is_variation = False
+            if variation_id:
+                variation_loader.add_value("id", item_id)
+                variation_loader.add_value("product_id", variation_id)
+                variation_loader.add_value("name", item["itemName"]),
+                variation_loader.add_value("site_unit_price", item["itemPrice"])
+                variation_loader.add_value("product_url", item["itemUrl"])
+                is_variation = True
+
+            for tag_id in item["tagIds"]:
+                db_tag_id = build_rakuten_id(tag_id)
+
+                if not tag_exists(self.psql_con, db_tag_id):
+                    request_to_tags.append((item_id, tag_id, db_tag_id, is_variation))
+                    continue
+
+                if is_variation:
+                    tag_loader = variation_tag_loader
+                    tag_loader.add_value("variation_id", item_id)
+                else:
+                    tag_loader = product_tag_loader
+                    tag_loader.add_value("product_id", item_id)
+                tag_loader.add_value("tag_id", db_tag_id)
+
+            if is_variation:
+                processed_product_ids.add(item_id)
                 continue
 
             product_loader.add_value("id", item_id)
@@ -147,6 +186,10 @@ class RakutenSpider(scrapy.Spider):
             product_loader.add_value("site_avg_rating", item["reviewAverage"])
             product_loader.add_value("site_reviews_count", item["reviewCount"])
             product_loader.add_value("product_url", item["itemUrl"])
+            product_loader.add_value("catch_copy", catch_copy)
+            product_loader.add_value("shop_code", shop_code)
+
+            catch_copies[shop_code + catch_copy] = item_id
 
             for category_id in categories_tree:
                 category_loader.add_value("product_id", item_id)
@@ -154,17 +197,7 @@ class RakutenSpider(scrapy.Spider):
 
             for url in item["mediumImageUrls"] or item["smallImageUrls"]:
                 image_loader.add_value("product_id", item_id)
-                image_loader.add_value("url", url)
-
-            for tag_id in item["tagIds"]:
-                db_tag_id = build_rakuten_id(tag_id)
-
-                if db_tag_id not in site_tags(self.psql_con, self.name):
-                    request_to_tags.append((item_id, tag_id, db_tag_id))
-                    continue
-
-                product_tag_loader.add_value("product_id", item_id)
-                product_tag_loader.add_value("tag_id", db_tag_id)
+                image_loader.add_value("url", url.split('?')[0])
 
             processed_product_ids.add(item_id)
 
@@ -172,15 +205,17 @@ class RakutenSpider(scrapy.Spider):
         yield category_loader.load_item()
         yield image_loader.load_item()
         yield product_tag_loader.load_item()
+        yield variation_loader.load_item()
+        yield variation_tag_loader.load_item()
 
-        for item_id, tag_id, db_tag_id in request_to_tags:
+        for item_id, tag_id, db_tag_id, is_variation in request_to_tags:
             yield scrapy.Request(
                 url=self.TAG_API_URL.format(
                     app_id=random_rakuten_app_id(self.RAKUTEN_APP_IDS),
                     tag_id=tag_id
                 ),
                 callback=self.parse_tag,
-                meta={"product_id": item_id, 'tag_id': db_tag_id}
+                meta={"product_id": item_id, 'tag_id': db_tag_id, 'is_variation': is_variation}
             )
 
         page_num = response.meta['page_num']
@@ -202,10 +237,14 @@ class RakutenSpider(scrapy.Spider):
         response_data = json.loads(response.body)
         yield from self.parse_tags(response_data['tagGroups'])
 
-        product_tag_loader = ItemLoader(ProductTagItem())
-        product_tag_loader.add_value("product_id", response.meta['product_id'])
-        product_tag_loader.add_value("tag_id", response.meta['tag_id'])
-        yield product_tag_loader.load_item()
+        if response.meta['is_variation']:
+            loader = ItemLoader(VariationTagItem())
+            loader.add_value("variation_id", response.meta['product_id'])
+        else:
+            loader = ItemLoader(ProductTagItem())
+            loader.add_value("product_id", response.meta['product_id'])
+        loader.add_value("tag_id", response.meta['tag_id'])
+        yield loader.load_item()
 
     def parse_tags(self, tags_data):
         tag_group_loader = ItemLoader(TagItem())
