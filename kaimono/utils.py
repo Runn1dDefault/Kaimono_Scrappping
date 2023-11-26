@@ -110,13 +110,13 @@ def tag_exists(conn, tag_id):
 
 def get_product_variation_id(conn, category_id, catch_copy, shop_code):
     sql = """
-    SELECT p.id FROM products_product p
-    INNER JOIN products_product_categories pc ON p.id = pc.product_id
-    INNER JOIN products_category c ON pc.category_id = c.id
+    SELECT p.id FROM products_product AS p
+    JOIN products_product_categories AS pc ON p.id = pc.product_id
+    JOIN products_category AS c ON pc.category_id = c.id
     WHERE 
         c.id = %s 
         AND p.catch_copy = %s 
-        AND p.shop_code = %s
+        AND p.shop_code = %s;
     """
     try:
         with conn.cursor() as cur:

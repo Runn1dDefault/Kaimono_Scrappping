@@ -32,21 +32,39 @@ class CategoryItem(scrapy.Item):
         match_fields = ("id",)
 
 
+class TagItem(scrapy.Item):
+    id = scrapy.Field()
+    name = scrapy.Field()
+    group_id = scrapy.Field()
+
+    class Meta(PSQLItemMeta):
+        db_table = "products_tag"
+        fields = ("id", "name", "group_id")
+        match_fields = ("id",)
+
+
 class ProductItem(scrapy.Item):
     id = scrapy.Field()
     name = scrapy.Field()
     description = scrapy.Field()
-    site_price = scrapy.Field()
     site_avg_rating = scrapy.Field()
     site_reviews_count = scrapy.Field()
-    product_url = scrapy.Field()
-    catch_copy = scrapy.Field()
     shop_code = scrapy.Field()
+    shop_url = scrapy.Field()
+    catch_copy = scrapy.Field()
 
     class Meta(PSQLItemMeta):
         db_table = "products_product"
-        fields = ("id", "name", "description", "site_price", "site_avg_rating", "site_reviews_count",
-                  "product_url", "catch_copy", "shop_code")
+        fields = (
+            "id",
+            "name",
+            "description",
+            "site_avg_rating",
+            "site_reviews_count",
+            "shop_code",
+            "shop_url",
+            "catch_copy"
+        )
         match_fields = ("id",)
 
 
@@ -61,17 +79,6 @@ class ProductCategoryItem(scrapy.Item):
         do_update = False
 
 
-class TagItem(scrapy.Item):
-    id = scrapy.Field()
-    name = scrapy.Field()
-    group_id = scrapy.Field()
-
-    class Meta(PSQLItemMeta):
-        db_table = "products_tag"
-        fields = ("id", "name", "group_id")
-        match_fields = ("id",)
-
-
 class ProductTagItem(scrapy.Item):
     product_id = scrapy.Field()
     tag_id = scrapy.Field()
@@ -83,13 +90,9 @@ class ProductTagItem(scrapy.Item):
         do_update = False
 
 
-def remove_url_query_param(url: str):
-    return url.split('?')[0]
-
-
 class ProductImageItem(scrapy.Item):
     product_id = scrapy.Field()
-    url = scrapy.Field(serializer=remove_url_query_param)
+    url = scrapy.Field()
 
     class Meta(PSQLItemMeta):
         db_table = "products_productimage"
@@ -97,41 +100,41 @@ class ProductImageItem(scrapy.Item):
         match_fields = ("product_id", "url")
 
 
-class ProductQuantityItem(scrapy.Item):
+class ProductInventoryItem(scrapy.Item):
+    id = scrapy.Field()
     product_id = scrapy.Field()
-    color = scrapy.Field()
-    color_image_url = scrapy.Field()
-    size = scrapy.Field()
+    item_code = scrapy.Field()
+    site_price = scrapy.Field()
+    product_url = scrapy.Field()
+    name = scrapy.Field()
     quantity = scrapy.Field()
-    site_unit_price = scrapy.Field()
     status_code = scrapy.Field()
+    can_choose_tags = scrapy.Field()
+    color_image = scrapy.Field()
 
     class Meta(PSQLItemMeta):
         db_table = "products_productinventory"
-        fields = ("product_id", "color", "color_image_url", "size", "quantity", "site_unit_price", "status_code")
-        match_fields = ("product_id", "color", "size")
-
-
-class ProductVariationItem(scrapy.Item):
-    id = scrapy.Field()
-    product_id = scrapy.Field()
-    name = scrapy.Field()
-    site_unit_price = scrapy.Field()
-    product_url = scrapy.Field()
-
-    class Meta(PSQLItemMeta):
-        db_table = "products_variation"
-        fields = ("id", "product_id", "catch_copy", "shop_code", "shop_name", "shop_name", "name",
-                  "site_unit_price", "product_url")
+        fields = (
+            "id",
+            "product_id",
+            "item_code",
+            "site_price",
+            "product_url",
+            "name",
+            "quantity",
+            "status_code",
+            "can_choose_tags",
+            "color_image"
+        )
         match_fields = ("id",)
 
 
-class VariationTagItem(scrapy.Item):
-    variation_id = scrapy.Field()
+class ProductInventoryTagItem(scrapy.Item):
+    productinventory_id = scrapy.Field()
     tag_id = scrapy.Field()
 
     class Meta(PSQLItemMeta):
-        db_table = "products_variation_tags"
-        fields = ("variation_id", "tag_id")
-        match_fields = ("variation_id", "tag_id")
+        db_table = "products_productinventory_tags"
+        fields = ("productinventory_id", "tag_id")
+        match_fields = ("productinventory_id", "tag_id")
         do_update = False

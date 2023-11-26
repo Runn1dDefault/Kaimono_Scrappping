@@ -1,5 +1,7 @@
 import json
 import math
+import re
+import unicodedata
 from typing import Iterable, Any
 
 import psycopg2
@@ -9,8 +11,11 @@ from scrapy import Request
 from scrapy.loader import ItemLoader
 from scrapy.http import Response
 
-from kaimono.items import CategoryItem, ProductItem, ProductImageItem, ProductTagItem, TagItem, ProductCategoryItem, \
-    ProductQuantityItem
+from kaimono.items import (
+    CategoryItem, TagItem,
+    ProductItem, ProductCategoryItem,
+    ProductInventoryTagItem, ProductInventoryItem, ProductTagItem, ProductImageItem
+)
 from kaimono.settings import DATABASE_SETTINGS
 from kaimono.utils import build_uniqlo_id, category_ids_for_scrape, get_site_id_from_db_id
 
@@ -48,13 +53,26 @@ class UniqloCategorySpider(scrapy.Spider):
         yield loader.load_item()
 
 
+def slugify(value, allow_unicode=False):
+    value = str(value)
+    if allow_unicode:
+        value = unicodedata.normalize("NFKC", value)
+    else:
+        value = (
+            unicodedata.normalize("NFKD", value)
+            .encode("ascii", "ignore")
+            .decode("ascii")
+        )
+    value = re.sub(r"[^\w\s-]", "", value.lower())
+    return re.sub(r"[-\s]+", "-", value).strip("-_")
+
+
 class UniqloSpider(scrapy.Spider):
     name = "uniqlo"
     custom_settings = {
         'LOG_LEVEL': 'INFO',
         'RETRY_ENABLED': True,
-        'COOKIES_ENABLED': False,
-        'DOWNLOAD_FAIL_ON_DATALOSS': False
+        'COOKIES_ENABLED': False
     }
     PAGE_LIMIT = 36
     BASE_API_URL = "https://www.uniqlo.com/us/api/commerce/v5/en/products"
@@ -110,18 +128,23 @@ class UniqloSpider(scrapy.Spider):
         loader.add_value("id", product_id)
         loader.add_value("name", response_data['name'])
         loader.add_value("description", response_data['longDescription'])
-        loader.add_value("site_price", response_data['prices']['base']['value'])
         loader.add_value("site_avg_rating", response_data['rating'].get('average', 0.0))
         loader.add_value("site_reviews_count", response_data['rating'].get('count', 0))
-        loader.add_value("product_url", self.ITEM_URL.format(product_id))
+        loader.add_value("shop_url", "https://www.uniqlo.com")
+        loader.add_value("shop_code", "uniqlo")
         yield loader.load_item()
 
+        item_image_loader = ItemLoader(ProductImageItem())
         images_data = response_data['images']
-        image_loader = ItemLoader(ProductImageItem())
         for image_data in images_data['main'].values():
-            image_loader.add_value("product_id", product_id)
-            image_loader.add_value("url", image_data['image'])
-        yield image_loader.load_item()
+            item_image_loader.add_value("product_id", product_id)
+            item_image_loader.add_value("url", image_data['image'])
+        for image_data in images_data['sub']:
+            image_url = image_data.get('image')
+            if image_url:
+                item_image_loader.add_value("product_id", product_id)
+                item_image_loader.add_value("url", image_url)
+        yield item_image_loader.load_item()
 
         breadcrumbs = response_data['breadcrumbs']
         # sometimes categories in key "subcategory" come
@@ -163,6 +186,7 @@ class UniqloSpider(scrapy.Spider):
         yield item_tags_loader.load_item()
 
         response.meta['colors'] = response_data['colors']
+        response.meta['item_images'] = response_data['images']
         response.meta['color_images'] = response_data['images']['chip']
         response.meta['sizes'] = response_data['sizes']
         response.meta['db_product_id'] = product_id
@@ -177,8 +201,9 @@ class UniqloSpider(scrapy.Spider):
 
     def parse_item_prices(self, response: Response):
         product_id = response.meta['db_product_id']
-        color_images = response.meta['color_images']
+        item_code = response.meta['item_code']
 
+        color_images = response.meta['color_images']
         colors = {color['displayCode']: color['name'] for color in response.meta['colors']}
         sizes = {size['displayCode']: size['name'] for size in response.meta['sizes']}
 
@@ -189,14 +214,14 @@ class UniqloSpider(scrapy.Spider):
 
         group_loader = ItemLoader(TagItem())
         group_loader.add_value("id", "uniqlo_s1izes")
-        group_loader.add_value("name", "sizes")
+        group_loader.add_value("name", "Sizes")
         group_loader.add_value("id", "uniqlo_c1olors")
-        group_loader.add_value("name", "colors")
+        group_loader.add_value("name", "Colors")
         yield group_loader.load_item()
 
-        loader = ItemLoader(ProductQuantityItem())
         tag_loader = ItemLoader(TagItem())
-        product_tag_loader = ItemLoader(ProductTagItem())
+        inventory_loader = ItemLoader(ProductInventoryItem())
+        inventory_tag_loader = ItemLoader(ProductInventoryTagItem())
         processed_ids = set()
 
         for data in combines:
@@ -205,48 +230,48 @@ class UniqloSpider(scrapy.Spider):
             stock_data = stocks[combine_id]
             price_data = prices[combine_id]
 
-            loader.add_value("product_id", product_id)
-            color_name = colors[color_code]
-            loader.add_value("color", color_name)
-            color_image = color_images.get(color_code)
-            if color_image:
-                loader.add_value("color_image_url", color_image)
-            else:
-                loader.add_value("color_image_url", "")
+            color_name, size_name = colors[color_code], sizes[data['size']['displayCode']]
+            color_slug, size_slug = slugify(color_name), slugify(size_name)
+            color_tag_id, size_tag_id = build_uniqlo_id(color_slug), build_uniqlo_id(size_slug)
 
-            size_name = sizes[data['size']['displayCode']]
-            loader.add_value("size", size_name)
-            loader.add_value("quantity", stock_data['quantity'])
-            loader.add_value("site_unit_price", price_data['base']['value'])
-            loader.add_value("status_code", stock_data['statusLocalized'])
-
-            color_tag_id = "uniqlo_" + color_name.lower().replace(' ', '-')
             if color_tag_id not in processed_ids:
                 tag_loader.add_value("id", color_tag_id)
                 tag_loader.add_value("name", color_name)
                 tag_loader.add_value("group_id", "uniqlo_c1olors")
                 processed_ids.add(color_tag_id)
 
-            size_tag_id = "uniqlo_" + size_name.lower().replace(" ", "-")
             if size_tag_id not in processed_ids:
                 tag_loader.add_value("id", size_tag_id)
                 tag_loader.add_value("name", size_name)
                 tag_loader.add_value("group_id", "uniqlo_s1izes")
                 processed_ids.add(size_tag_id)
 
-            if (size_tag_id, product_id) not in processed_ids:
-                product_tag_loader.add_value("product_id", product_id)
-                product_tag_loader.add_value("tag_id", size_tag_id)
-                processed_ids.add((size_tag_id, product_id))
+            inventory_id = f"{product_id}-{color_slug}-{size_slug}"
+            inventory_loader.add_value("id", inventory_id)
+            inventory_loader.add_value("product_id", product_id)
+            inventory_loader.add_value("item_code", product_id)
+            inventory_loader.add_value("site_price", price_data['base']['value'])
+            inventory_loader.add_value("product_url", self.ITEM_URL.format(item_code=item_code))
+            inventory_loader.add_value("name", f"Color: {color_name} Size: {size_name}")
+            inventory_loader.add_value("quantity", stock_data['quantity'])
+            inventory_loader.add_value("status_code", stock_data['statusLocalized'])
+            inventory_loader.add_value("can_choose_tags", True)
+            color_image = color_images.get(color_code)
+            if color_image:
+                inventory_loader.add_value("color_image", color_image)
+            else:
+                inventory_loader.add_value("color_image", "")
 
-            if (color_tag_id, product_id) not in processed_ids:
-                product_tag_loader.add_value("product_id", product_id)
-                product_tag_loader.add_value("tag_id", color_tag_id)
-                processed_ids.add((color_tag_id, product_id))
+            if (color_tag_id, size_tag_id, inventory_id) not in processed_ids:
+                inventory_tag_loader.add_value("productinventory_id", inventory_id)
+                inventory_tag_loader.add_value("tag_id", size_tag_id)
+                inventory_tag_loader.add_value("productinventory_id", inventory_id)
+                inventory_tag_loader.add_value("tag_id", color_tag_id)
+                processed_ids.add((color_tag_id, size_tag_id, inventory_id))
 
-        yield loader.load_item()
+        yield inventory_loader.load_item()
         yield tag_loader.load_item()
-        yield product_tag_loader.load_item()
+        yield inventory_tag_loader.load_item()
 
     def parse_pages(self, response: Response):
         pagination_data = json.loads(response.body)['result']['pagination']

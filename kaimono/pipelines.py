@@ -161,7 +161,7 @@ class PSQLPipeline:
                 fields=", ".join(fields)
             )
             execute_values(self.cur, sql, values)
-            self.logger.info("Saved to %s: %s" % (table_name, len(values)))
+            self.logger.debug("Saved to %s: %s" % (table_name, len(values)))
         except Exception as e:
             self.conn.rollback()
             self.logger.error(f"Failed to process item on creating: {e}")
@@ -188,7 +188,7 @@ class PSQLPipeline:
                 condition=conditions
             )
             execute_values(self.cur, sql, values)
-            self.logger.info("Updated in %s: %s" % (table_name, len(values)))
+            self.logger.debug("Updated in %s: %s" % (table_name, len(values)))
         except Exception as e:
             self.conn.rollback()
             self.logger.error(f"Failed to process item on updating: {e}")

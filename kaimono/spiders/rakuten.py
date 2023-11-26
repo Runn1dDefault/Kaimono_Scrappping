@@ -8,8 +8,8 @@ from scrapy import Request
 from scrapy.http import Response
 from scrapy.loader import ItemLoader
 
-from kaimono.items import CategoryItem, ProductItem, ProductCategoryItem, ProductImageItem, TagItem, ProductTagItem, \
-    ProductVariationItem, VariationTagItem
+from kaimono.items import CategoryItem, ProductItem, ProductCategoryItem, TagItem, \
+    ProductInventoryItem, ProductInventoryTagItem, ProductImageItem
 from kaimono.settings import DATABASE_SETTINGS
 from kaimono.utils import build_rakuten_id, category_ids_for_scrape, get_genres_tree, get_site_id_from_db_id, \
     tag_exists, get_product_variation_id
@@ -45,7 +45,6 @@ class RakutenCategorySpider(scrapy.Spider):
         parents_data = response_data.get('parents')
 
         current_id = build_rakuten_id(current_data['genreId'])
-        self.logger.info(f"Genre: {current_id}")
         current_loader = ItemLoader(CategoryItem())
 
         current_loader.add_value("id", current_id)
@@ -95,6 +94,7 @@ class RakutenSpider(scrapy.Spider):
 
     TAG_API_URL = RAKUTEN_BASE_URL + ("services/api/IchibaTag/Search/20140222?"
                                       "applicationId={app_id}&formatVersion=2&tagId={tag_id}")
+    TRANSLATE_GG_URL = "https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=ja&tl=en&q=%s"
 
     def __init__(self, *args, **kwargs):
         assert self.RAKUTEN_APP_IDS
@@ -116,8 +116,6 @@ class RakutenSpider(scrapy.Spider):
             )
 
     def parse(self, response: Response, **kwargs: Any) -> Any:
-        # TODO: перевести бренды
-        # TODO: определять вариации продукта по catchcopy и продавцу
         response_data = json.loads(response.body)
 
         tags_info = response_data['TagInformation']
@@ -128,95 +126,85 @@ class RakutenSpider(scrapy.Spider):
         category_id = response.meta['category_id']
         categories_tree = get_genres_tree(self.psql_con, category_id)
 
-        product_loader = ItemLoader(ProductItem())
-        variation_loader = ItemLoader(ProductVariationItem())
-        category_loader = ItemLoader(ProductCategoryItem())
-        image_loader = ItemLoader(ProductImageItem())
-        product_tag_loader = ItemLoader(ProductTagItem())
-        variation_tag_loader = ItemLoader(VariationTagItem())
+        item_loader = ItemLoader(ProductItem())
+        item_category_loader = ItemLoader(ProductCategoryItem())
+        item_image_loader = ItemLoader(ProductImageItem())
+        item_inventory_loader = ItemLoader(ProductInventoryItem())
+        inventory_tag_loader = ItemLoader(ProductInventoryTagItem())
 
-        processed_product_ids = set()
+        processed_ids = set()
         catch_copies = {}
         request_to_tags = []
 
         for item in response_data['Items']:
-            item_id = build_rakuten_id(item["itemCode"])
-
-            if item_id in processed_product_ids:
+            item_code = item["itemCode"]
+            item_id = build_rakuten_id(item_code)
+            if item_id in processed_ids:
                 continue
 
-            shop_code = item["shopCode"]
-            catch_copy = item["catchcopy"]
-            variation_id = catch_copies.get(shop_code + catch_copy)
-            if not variation_id:
-                variation_id = get_product_variation_id(self.psql_con, category_id, catch_copy, shop_code)
+            catch_copy, shop_code = item["catchcopy"], item["shopCode"]
+            variation_id = (
+                    catch_copies.get(shop_code + catch_copy) or
+                    get_product_variation_id(self.psql_con, category_id, catch_copy, shop_code)
+            )
 
-            is_variation = False
-            if variation_id:
-                variation_loader.add_value("id", item_id)
-                variation_loader.add_value("product_id", variation_id)
-                variation_loader.add_value("name", item["itemName"]),
-                variation_loader.add_value("site_unit_price", item["itemPrice"])
-                variation_loader.add_value("product_url", item["itemUrl"])
-                is_variation = True
+            if not variation_id:
+                item_loader.add_value("id", item_id)
+                item_loader.add_value("name", item["itemName"])
+                item_loader.add_value("description", item["itemCaption"])
+                item_loader.add_value("site_avg_rating", item["reviewAverage"])
+                item_loader.add_value("site_reviews_count", item["reviewCount"])
+                item_loader.add_value("shop_code", shop_code)
+                item_loader.add_value("catch_copy", catch_copy)
+                item_loader.add_value("shop_url", item["shopUrl"])
+                catch_copies[shop_code + catch_copy] = item_id
+
+                for category_id in categories_tree:
+                    item_category_loader.add_value("product_id", item_id)
+                    item_category_loader.add_value("category_id", category_id)
+
+                for url in item["mediumImageUrls"] or item["smallImageUrls"]:
+                    item_image_loader.add_value("product_id", item_id)
+                    item_image_loader.add_value("url", url.split('?')[0])
+
+                variation_id = item_id
+
+            item_inventory_loader.add_value("id", item_id)
+            item_inventory_loader.add_value("product_id", variation_id)
+            item_inventory_loader.add_value("item_code", item_code)
+            item_inventory_loader.add_value("site_price", item['itemPrice'])
+            item_inventory_loader.add_value("product_url", item["itemUrl"])
+            item_inventory_loader.add_value("name", item["itemName"]),
+            item_inventory_loader.add_value("can_choose_tags", False)
 
             for tag_id in item["tagIds"]:
                 db_tag_id = build_rakuten_id(tag_id)
 
                 if not tag_exists(self.psql_con, db_tag_id):
-                    request_to_tags.append((item_id, tag_id, db_tag_id, is_variation))
+                    request_to_tags.append((item_id, tag_id, db_tag_id))
                     continue
 
-                if is_variation:
-                    tag_loader = variation_tag_loader
-                    tag_loader.add_value("variation_id", item_id)
-                else:
-                    tag_loader = product_tag_loader
-                    tag_loader.add_value("product_id", item_id)
-                tag_loader.add_value("tag_id", db_tag_id)
+                inventory_tag_loader.add_value("productinventory_id", item_id)
+                inventory_tag_loader.add_value("tag_id", db_tag_id)
 
-            if is_variation:
-                processed_product_ids.add(item_id)
-                continue
+            processed_ids.add(item_id)
 
-            product_loader.add_value("id", item_id)
-            product_loader.add_value("name", item["itemName"])
-            product_loader.add_value("description", item["itemCaption"])
-            product_loader.add_value("site_price", item["itemPrice"])
-            product_loader.add_value("site_avg_rating", item["reviewAverage"])
-            product_loader.add_value("site_reviews_count", item["reviewCount"])
-            product_loader.add_value("product_url", item["itemUrl"])
-            product_loader.add_value("catch_copy", catch_copy)
-            product_loader.add_value("shop_code", shop_code)
+        yield item_loader.load_item()
+        yield item_category_loader.load_item()
+        yield item_image_loader.load_item()
+        yield item_inventory_loader.load_item()
 
-            catch_copies[shop_code + catch_copy] = item_id
-
-            for category_id in categories_tree:
-                category_loader.add_value("product_id", item_id)
-                category_loader.add_value("category_id", category_id)
-
-            for url in item["mediumImageUrls"] or item["smallImageUrls"]:
-                image_loader.add_value("product_id", item_id)
-                image_loader.add_value("url", url.split('?')[0])
-
-            processed_product_ids.add(item_id)
-
-        yield product_loader.load_item()
-        yield category_loader.load_item()
-        yield image_loader.load_item()
-        yield product_tag_loader.load_item()
-        yield variation_loader.load_item()
-        yield variation_tag_loader.load_item()
-
-        for item_id, tag_id, db_tag_id, is_variation in request_to_tags:
+        for item_id, tag_id, db_tag_id in request_to_tags:
             yield scrapy.Request(
                 url=self.TAG_API_URL.format(
                     app_id=random_rakuten_app_id(self.RAKUTEN_APP_IDS),
                     tag_id=tag_id
                 ),
                 callback=self.parse_tag,
-                meta={"product_id": item_id, 'tag_id': db_tag_id, 'is_variation': is_variation}
+                meta={"item_id": item_id, 'tag_id': db_tag_id}
             )
+
+        yield inventory_tag_loader.load_item()
 
         page_num = response.meta['page_num']
         pages_count = response_data['pageCount']
@@ -237,12 +225,8 @@ class RakutenSpider(scrapy.Spider):
         response_data = json.loads(response.body)
         yield from self.parse_tags(response_data['tagGroups'])
 
-        if response.meta['is_variation']:
-            loader = ItemLoader(VariationTagItem())
-            loader.add_value("variation_id", response.meta['product_id'])
-        else:
-            loader = ItemLoader(ProductTagItem())
-            loader.add_value("product_id", response.meta['product_id'])
+        loader = ItemLoader(ProductInventoryTagItem())
+        loader.add_value("productinventory_id", response.meta['item_id'])
         loader.add_value("tag_id", response.meta['tag_id'])
         yield loader.load_item()
 
@@ -253,12 +237,33 @@ class RakutenSpider(scrapy.Spider):
         for tag_group_data in tags_data:
             group_id = build_rakuten_id(tag_group_data["tagGroupId"])
             tag_group_loader.add_value("id", group_id)
-            tag_group_loader.add_value("name", tag_group_data["tagGroupName"])
+            group_name = tag_group_data["tagGroupName"]
+            if group_name == "ブランド":
+                tag_group_loader.add_value("name", "Brand")
+            else:
+                tag_group_loader.add_value("name", group_name)
 
             for tag_data in tag_group_data["tags"]:
-                tag_loader.add_value("id", build_rakuten_id(tag_data["tagId"]))
-                tag_loader.add_value("name", tag_data["tagName"])
+                tag_id = build_rakuten_id(tag_data["tagId"])
+                tag_name = tag_data["tagName"]
+                if group_name == "ブランド":
+                    yield scrapy.Request(
+                        url=self.TRANSLATE_GG_URL % tag_name,
+                        callback=self.parse_translated_tag,
+                        meta={'original_name': tag_name, 'tag_id': tag_id, 'group_id': group_id}
+                    )
+                tag_loader.add_value("id", tag_id)
+                tag_loader.add_value("name", tag_name)
                 tag_loader.add_value("group_id", group_id)
 
         yield tag_group_loader.load_item()
+        yield tag_loader.load_item()
+
+    def parse_translated_tag(self, response: Response):
+        translated_tag_name = json.loads(response.body)[0][0][0]
+        self.logger.info(f"Tag: {response.meta['original_name']} transtated to {translated_tag_name}")
+        tag_loader = ItemLoader(TagItem())
+        tag_loader.add_value("id", response.meta['tag_id'])
+        tag_loader.add_value("name", translated_tag_name)
+        tag_loader.add_value("group_id", response.meta['group_id'])
         yield tag_loader.load_item()
