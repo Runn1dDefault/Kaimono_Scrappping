@@ -157,6 +157,7 @@ class RakutenSpider(scrapy.Spider):
                 item_loader.add_value("shop_code", shop_code)
                 item_loader.add_value("catch_copy", catch_copy)
                 item_loader.add_value("shop_url", item["shopUrl"])
+                item_loader.add_value("can_choose_tags", False)
                 catch_copies[shop_code + catch_copy] = item_id
 
                 for category_id in categories_tree:
@@ -175,7 +176,6 @@ class RakutenSpider(scrapy.Spider):
             item_inventory_loader.add_value("site_price", item['itemPrice'])
             item_inventory_loader.add_value("product_url", item["itemUrl"])
             item_inventory_loader.add_value("name", item["itemName"]),
-            item_inventory_loader.add_value("can_choose_tags", False)
 
             for tag_id in item["tagIds"]:
                 db_tag_id = build_rakuten_id(tag_id)

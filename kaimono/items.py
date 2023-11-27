@@ -30,6 +30,7 @@ class CategoryItem(scrapy.Item):
         db_table = "products_category"
         fields = ("id", "name", "parent_id", "level")
         match_fields = ("id",)
+        to_update = False
 
 
 class TagItem(scrapy.Item):
@@ -52,6 +53,7 @@ class ProductItem(scrapy.Item):
     shop_code = scrapy.Field()
     shop_url = scrapy.Field()
     catch_copy = scrapy.Field()
+    can_choose_tags = scrapy.Field()
 
     class Meta(PSQLItemMeta):
         db_table = "products_product"
@@ -63,7 +65,8 @@ class ProductItem(scrapy.Item):
             "site_reviews_count",
             "shop_code",
             "shop_url",
-            "catch_copy"
+            "catch_copy",
+            "can_choose_tags"
         )
         match_fields = ("id",)
 
@@ -109,7 +112,6 @@ class ProductInventoryItem(scrapy.Item):
     name = scrapy.Field()
     quantity = scrapy.Field()
     status_code = scrapy.Field()
-    can_choose_tags = scrapy.Field()
     color_image = scrapy.Field()
 
     class Meta(PSQLItemMeta):
@@ -123,7 +125,6 @@ class ProductInventoryItem(scrapy.Item):
             "name",
             "quantity",
             "status_code",
-            "can_choose_tags",
             "color_image"
         )
         match_fields = ("id",)
