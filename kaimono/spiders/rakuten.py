@@ -234,6 +234,8 @@ class RakutenSpider(scrapy.Spider):
         tag_group_loader = ItemLoader(TagItem())
         tag_loader = ItemLoader(TagItem())
 
+        tags_to_translate = []
+
         for tag_group_data in tags_data:
             group_id = build_rakuten_id(tag_group_data["tagGroupId"])
             tag_group_loader.add_value("id", group_id)
@@ -247,17 +249,23 @@ class RakutenSpider(scrapy.Spider):
                 tag_id = build_rakuten_id(tag_data["tagId"])
                 tag_name = tag_data["tagName"]
                 if group_name == "ブランド":
-                    yield scrapy.Request(
-                        url=self.TRANSLATE_GG_URL % tag_name,
-                        callback=self.parse_translated_tag,
-                        meta={'original_name': tag_name, 'tag_id': tag_id, 'group_id': group_id}
+                    tags_to_translate.append(
+                        scrapy.Request(
+                            url=self.TRANSLATE_GG_URL % tag_name,
+                            callback=self.parse_translated_tag,
+                            meta={'original_name': tag_name, 'tag_id': tag_id, 'group_id': group_id}
+                        )
                     )
+                    continue
                 tag_loader.add_value("id", tag_id)
                 tag_loader.add_value("name", tag_name)
                 tag_loader.add_value("group_id", group_id)
 
         yield tag_group_loader.load_item()
         yield tag_loader.load_item()
+
+        for request in tags_to_translate:
+            yield request
 
     def parse_translated_tag(self, response: Response):
         translated_tag_name = json.loads(response.body)[0][0][0]
