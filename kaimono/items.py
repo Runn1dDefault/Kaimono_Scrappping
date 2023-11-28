@@ -42,6 +42,7 @@ class TagItem(scrapy.Item):
         db_table = "products_tag"
         fields = ("id", "name", "group_id")
         match_fields = ("id",)
+        do_update = False
 
 
 class ProductItem(scrapy.Item):

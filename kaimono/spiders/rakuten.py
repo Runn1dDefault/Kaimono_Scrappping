@@ -94,7 +94,6 @@ class RakutenSpider(scrapy.Spider):
 
     TAG_API_URL = RAKUTEN_BASE_URL + ("services/api/IchibaTag/Search/20140222?"
                                       "applicationId={app_id}&formatVersion=2&tagId={tag_id}")
-    TRANSLATE_GG_URL = "https://translate.googleapis.com/translate_a/single?client=gtx&dt=t&sl=ja&tl=en&q=%s"
 
     def __init__(self, *args, **kwargs):
         assert self.RAKUTEN_APP_IDS
@@ -144,8 +143,8 @@ class RakutenSpider(scrapy.Spider):
 
             catch_copy, shop_code = item["catchcopy"], item["shopCode"]
             variation_id = (
-                    catch_copies.get(shop_code + catch_copy) or
-                    get_product_variation_id(self.psql_con, category_id, catch_copy, shop_code)
+                catch_copies.get(shop_code + catch_copy) or
+                get_product_variation_id(self.psql_con, category_id, catch_copy, shop_code)
             )
 
             if not variation_id:
@@ -201,7 +200,7 @@ class RakutenSpider(scrapy.Spider):
                     tag_id=tag_id
                 ),
                 callback=self.parse_tag,
-                meta={"item_id": item_id, 'tag_id': db_tag_id}
+                meta={"item_id": item_id, 'db_tag_id': db_tag_id}
             )
 
         yield inventory_tag_loader.load_item()
@@ -227,51 +226,24 @@ class RakutenSpider(scrapy.Spider):
 
         loader = ItemLoader(ProductInventoryTagItem())
         loader.add_value("productinventory_id", response.meta['item_id'])
-        loader.add_value("tag_id", response.meta['tag_id'])
+        loader.add_value("tag_id", response.meta['db_tag_id'])
         yield loader.load_item()
 
     def parse_tags(self, tags_data):
         tag_group_loader = ItemLoader(TagItem())
         tag_loader = ItemLoader(TagItem())
 
-        tags_to_translate = []
-
         for tag_group_data in tags_data:
             group_id = build_rakuten_id(tag_group_data["tagGroupId"])
             tag_group_loader.add_value("id", group_id)
             group_name = tag_group_data["tagGroupName"]
-            if group_name == "ブランド":
-                tag_group_loader.add_value("name", "Brand")
-            else:
-                tag_group_loader.add_value("name", group_name)
+            tag_group_loader.add_value("name", group_name)
 
             for tag_data in tag_group_data["tags"]:
                 tag_id = build_rakuten_id(tag_data["tagId"])
-                tag_name = tag_data["tagName"]
-                if group_name == "ブランド":
-                    tags_to_translate.append(
-                        scrapy.Request(
-                            url=self.TRANSLATE_GG_URL % tag_name,
-                            callback=self.parse_translated_tag,
-                            meta={'original_name': tag_name, 'tag_id': tag_id, 'group_id': group_id}
-                        )
-                    )
-                    continue
                 tag_loader.add_value("id", tag_id)
-                tag_loader.add_value("name", tag_name)
+                tag_loader.add_value("name", tag_data["tagName"])
                 tag_loader.add_value("group_id", group_id)
 
         yield tag_group_loader.load_item()
-        yield tag_loader.load_item()
-
-        for request in tags_to_translate:
-            yield request
-
-    def parse_translated_tag(self, response: Response):
-        translated_tag_name = json.loads(response.body)[0][0][0]
-        self.logger.info(f"Tag: {response.meta['original_name']} transtated to {translated_tag_name}")
-        tag_loader = ItemLoader(TagItem())
-        tag_loader.add_value("id", response.meta['tag_id'])
-        tag_loader.add_value("name", translated_tag_name)
-        tag_loader.add_value("group_id", response.meta['group_id'])
         yield tag_loader.load_item()
