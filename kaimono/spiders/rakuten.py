@@ -86,7 +86,7 @@ class RakutenSpider(scrapy.Spider):
         "DEFAULT_REQUEST_HEADERS": {
             "Content-Type": "application/json"
         },
-        "CONCURRENT_REQUESTS": len(RAKUTEN_APP_IDS) * 5,
+        "CONCURRENT_REQUESTS": len(RAKUTEN_APP_IDS) * 3,
     }
 
     API_URL = ("https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601"
