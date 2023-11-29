@@ -132,6 +132,7 @@ class UniqloSpider(scrapy.Spider):
         loader.add_value("site_reviews_count", response_data['rating'].get('count', 0))
         loader.add_value("shop_url", "https://www.uniqlo.com")
         loader.add_value("shop_code", "uniqlo")
+        loader.add_value("can_choose_tags", True)
         yield loader.load_item()
 
         item_image_loader = ItemLoader(ProductImageItem())
@@ -255,7 +256,6 @@ class UniqloSpider(scrapy.Spider):
             inventory_loader.add_value("name", f"Color: {color_name} Size: {size_name}")
             inventory_loader.add_value("quantity", stock_data['quantity'])
             inventory_loader.add_value("status_code", stock_data['statusLocalized'])
-            inventory_loader.add_value("can_choose_tags", True)
             color_image = color_images.get(color_code)
             if color_image:
                 inventory_loader.add_value("color_image", color_image)
