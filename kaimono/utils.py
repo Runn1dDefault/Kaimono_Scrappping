@@ -14,7 +14,7 @@ def get_site_id_from_db_id(_id: str) -> str:
     return _id.split('_')[-1]
 
 
-def product_ids_to_check_count(conn, site: str, check_time: datetime):
+def product_ids_to_check_count(conn, site: str, check_time: datetime) -> int:
     sql = """
         SELECT 
             COUNT(p.id) 
@@ -30,10 +30,10 @@ def product_ids_to_check_count(conn, site: str, check_time: datetime):
     try:
         with conn.cursor() as cur:
             cur.execute(sql, (f"{site}%", check_time.strftime("%Y-%m-%d %H:%M:%S")))
-            return cur.fetchone()
+            return cur.fetchone()[0]
     except Exception as e:
         conn.rollback()
-        raise Exception(f"Failed to retrieve genres for scraping: {e}")
+        return 0
 
 
 def product_ids_to_check(conn, site: str, check_time: datetime, limit: int, offset: int = 0):
