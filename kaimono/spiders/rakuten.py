@@ -308,7 +308,7 @@ class RakutenProductSpider(scrapy.Spider):
             return
 
         offset = 0
-        for _ in self.pages:
+        for _ in range(self.pages):
             for product_id in product_ids_to_check(
                 self.psql_con,
                 site="rakuten",
