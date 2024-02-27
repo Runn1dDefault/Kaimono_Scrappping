@@ -231,7 +231,7 @@ class PSQLRemovePipeline:
             sql = self.SQL_SINGLE_DELETE.format(table_name=table_name, field=field)
             execute_values(self.cur, sql, value)
             self.conn.commit()
-            self.logger.debug("DELETE in %s: %s" % (table_name, value))
+            self.logger.info("DELETE in %s: %s" % (table_name, value))
         except Exception as e:
             self.conn.rollback()
             self.logger.error(f"Failed to process item on deleting: {e}")
