@@ -95,7 +95,7 @@ class RakutenSpider(scrapy.Spider):
     }
 
     API_URL = ("https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601"
-               "?applicationId={app_id}&formatVersion=2&sort=+updateTimestamp&genreId={genre_id}"
+               "?applicationId={app_id}&formatVersion=2&genreId={genre_id}"
                "&genreInformationFlag=0&tagInformationFlag=1&availability=1&page={page}")
 
     TAG_API_URL = RAKUTEN_BASE_URL + ("services/api/IchibaTag/Search/20140222?"
