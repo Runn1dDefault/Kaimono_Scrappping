@@ -55,7 +55,8 @@ def product_ids_to_check(conn, site: str, check_time: datetime, limit: int, offs
             return cur.fetchall()
     except Exception as e:
         conn.rollback()
-        raise Exception(f"Failed to retrieve genres for scraping: {e}")
+        raise e
+        # return []
 
 
 def category_ids_for_scrape(conn, site: str):
