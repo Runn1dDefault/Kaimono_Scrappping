@@ -316,6 +316,7 @@ class RakutenProductSpider(scrapy.Spider):
                 limit=self.CHECK_PAGE_LIMIT,
                 offset=offset
             ):
+                product_id = product_id[0]
                 item_code = product_id.split("_")[-1]
 
                 yield scrapy.Request(
