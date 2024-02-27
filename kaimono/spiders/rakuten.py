@@ -1,5 +1,7 @@
 import json
+import math
 import random
+from datetime import datetime, timedelta
 from typing import Any, Iterable
 
 import psycopg2
@@ -7,12 +9,14 @@ import scrapy
 from scrapy import Request
 from scrapy.http import Response
 from scrapy.loader import ItemLoader
+from scrapy.spidermiddlewares.httperror import HttpError
 
 from kaimono.items import CategoryItem, ProductItem, ProductCategoryItem, TagItem, \
-    ProductInventoryItem, ProductInventoryTagItem, ProductImageItem
+    ProductInventoryItem, ProductInventoryTagItem, ProductImageItem, ProductToRemoveItem
 from kaimono.settings import DATABASE_SETTINGS
 from kaimono.utils import build_rakuten_id, category_ids_for_scrape, get_genres_tree, get_site_id_from_db_id, \
-    tag_exists, get_product_variation_id
+    tag_exists, get_product_variation_id, product_ids_to_check_count, product_ids_to_check, \
+    delete_product_exclude_images
 
 RAKUTEN_BASE_URL = "https://app.rakuten.co.jp/"
 
@@ -96,7 +100,7 @@ class RakutenSpider(scrapy.Spider):
 
     TAG_API_URL = RAKUTEN_BASE_URL + ("services/api/IchibaTag/Search/20140222?"
                                       "applicationId={app_id}&formatVersion=2&tagId={tag_id}")
-    MAX_PAGES = 3
+    MAX_PAGES = 1
 
     def __init__(self, *args, **kwargs):
         assert self.RAKUTEN_APP_IDS
@@ -166,9 +170,12 @@ class RakutenSpider(scrapy.Spider):
                     item_category_loader.add_value("product_id", item_id)
                     item_category_loader.add_value("category_id", category_id)
 
-                for url in item["mediumImageUrls"] or item["smallImageUrls"]:
+                image_urls = list(map(lambda img: img.split("?")[0], item["mediumImageUrls"] or item["smallImageUrls"]))
+                delete_product_exclude_images(self.psql_con, product_id=item_id, image_urls=image_urls)
+
+                for img_link in image_urls:
                     item_image_loader.add_value("product_id", item_id)
-                    item_image_loader.add_value("url", url.split('?')[0])
+                    item_image_loader.add_value("url", img_link)
 
                 variation_id = item_id
 
@@ -208,16 +215,16 @@ class RakutenSpider(scrapy.Spider):
 
         yield inventory_tag_loader.load_item()
 
-        page_num = response.meta['page_num']
+        page_num = response.meta['page_num'] + 1
         pages_count = response_data['pageCount']
 
         if self.MAX_PAGES >= page_num < pages_count:
-            response.meta['page_num'] += 1
+            response.meta['page_num'] = page_num
             yield scrapy.Request(
                 url=self.API_URL.format(
                     app_id=random_rakuten_app_id(self.RAKUTEN_APP_IDS),
                     genre_id=response.meta['site_category_id'],
-                    page=response.meta['page_num']
+                    page=page_num
                 ),
                 callback=self.parse,
                 meta=response.meta
@@ -250,3 +257,95 @@ class RakutenSpider(scrapy.Spider):
 
         yield tag_group_loader.load_item()
         yield tag_loader.load_item()
+
+
+class RakutenProductSpider(scrapy.Spider):
+    name = "rakuten_products"
+
+    RAKUTEN_APP_IDS = (
+        "1006081949539677212",
+        "1032684706123538391",
+        "1027393930619954222",
+        '1052001095841946356',
+        '1053826134919859121'
+    )
+
+    custom_settings = {
+        'LOG_LEVEL': 'INFO',
+        "DEFAULT_REQUEST_HEADERS": {
+            "Content-Type": "application/json"
+        },
+        "CONCURRENT_REQUESTS": len(RAKUTEN_APP_IDS) * 2,
+        "DOWNLOAD_DELAY": 0.2,
+        "ITEM_PIPELINES": {
+            "kaimono.pipelines.PSQLRemovePipeline": 300,
+        },
+        "HTTPERROR_ALLOWED_CODES": [404]
+    }
+
+    API_URL = ("https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601"
+               "?applicationId={app_id}&formatVersion=2&sort=+updateTimestamp&itemCode={item_code}"
+               "&genreInformationFlag=0&tagInformationFlag=1&availability=1&page={page}")
+
+    TAG_API_URL = RAKUTEN_BASE_URL + ("services/api/IchibaTag/Search/20140222?"
+                                      "applicationId={app_id}&formatVersion=2&tagId={tag_id}")
+    CHECK_PAGE_LIMIT = 100
+
+    def __init__(self, *args, **kwargs):
+        assert self.RAKUTEN_APP_IDS
+        super().__init__(*args, **kwargs)
+        self.psql_con = psycopg2.connect(**DATABASE_SETTINGS)
+        self.month_ago = datetime.utcnow() - timedelta(days=31)
+        self.products_count = product_ids_to_check_count(
+            conn=self.psql_con,
+            site="rakuten",
+            check_time=self.month_ago
+        )
+        self.pages = math.ceil(self.products_count / self.CHECK_PAGE_LIMIT)
+
+    def start_requests(self) -> Iterable[Request]:
+        if self.products_count <= 0:
+            return
+
+        offset = 0
+        for _ in self.pages:
+            for product_id in product_ids_to_check(
+                self.psql_con,
+                site="rakuten",
+                check_time=self.month_ago,
+                limit=self.CHECK_PAGE_LIMIT,
+                offset=offset
+            ):
+                item_code = product_id.split("_")[-1]
+
+                yield scrapy.Request(
+                    url=self.API_URL.format(
+                        app_id=random_rakuten_app_id(self.RAKUTEN_APP_IDS),
+                        item_code=item_code,
+                        page=1
+                    ),
+                    callback=self.parse,
+                    meta={"product_id": product_id, "item_code": item_code},
+                    errback=self.err_back
+                )
+
+            offset += self.CHECK_PAGE_LIMIT
+
+    def parse(self, response: Response, **kwargs: Any) -> Any:
+        if response.status == 404:
+            product_remove_loader = ItemLoader(ProductToRemoveItem())
+            product_remove_loader.add_value("id", response.meta["product_id"])
+            yield product_remove_loader.load_item()
+
+    def err_back(self, failure):
+        self.logger.error(repr(failure))
+
+        if not failure.check(HttpError):
+            return
+
+        response = failure.value.response
+
+        if response.status == 404:
+            product_remove_loader = ItemLoader(ProductToRemoveItem())
+            product_remove_loader.add_value("id", response.meta["product_id"])
+            yield product_remove_loader.load_item()

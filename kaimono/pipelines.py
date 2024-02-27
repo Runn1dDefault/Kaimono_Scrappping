@@ -195,3 +195,44 @@ class PSQLPipeline:
             raise e
         else:
             self.conn.commit()
+
+
+class PSQLRemovePipeline:
+    SQL_SINGLE_DELETE = "DELETE FROM {table_name} WHERE {field} = %s"
+
+    def __init__(self):
+        self.conn = None
+        self.cur = None
+        self.logger = None
+
+    def open_spider(self, spider):
+        self.conn = psycopg2.connect(**DATABASE_SETTINGS)
+        self.cur = self.conn.cursor()
+        self.logger = spider.logger
+
+    def close_spider(self, spider):
+        spider.logger.debug(f'{self.__class__.__name__} close...')
+        self.cur.close()
+        self.conn.close()
+
+    def process_item(self, item, spider):
+        if not hasattr(item, 'Meta') or not issubclass(getattr(item, 'Meta'), PSQLItemMeta):
+            spider.logger.debug(f'{self.__class__.__name__} passed item...')
+            return item
+
+        db_meta = item.Meta
+        field = db_meta.fields[0]
+        value = item.get(field)
+        if value:
+            self.single_delete(db_meta.db_table, field=field, value=value)
+
+    def single_delete(self, table_name, field, value):
+        try:
+            sql = self.SQL_SINGLE_DELETE.format(table_name=table_name, field=field)
+            execute_values(self.cur, sql, value)
+            self.conn.commit()
+            self.logger.debug("DELETE in %s: %s" % (table_name, value))
+        except Exception as e:
+            self.conn.rollback()
+            self.logger.error(f"Failed to process item on deleting: {e}")
+            raise e

@@ -17,7 +17,10 @@ from kaimono.items import (
     ProductInventoryTagItem, ProductInventoryItem, ProductImageItem
 )
 from kaimono.settings import DATABASE_SETTINGS
-from kaimono.utils import build_uniqlo_id, category_ids_for_scrape, get_site_id_from_db_id
+from kaimono.utils import (
+    build_uniqlo_id, category_ids_for_scrape, get_site_id_from_db_id,
+    delete_product_exclude_images
+)
 
 
 class UniqloCategorySpider(scrapy.Spider):
@@ -88,8 +91,8 @@ class UniqloSpider(scrapy.Spider):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        connection = psycopg2.connect(**DATABASE_SETTINGS)
-        self.category_ids = category_ids_for_scrape(connection, "uniqlo")
+        self.psql_conn = psycopg2.connect(**DATABASE_SETTINGS)
+        self.category_ids = category_ids_for_scrape(self.psql_conn, "uniqlo")
 
     def start_requests(self) -> Iterable[Request]:
         for category_id in self.category_ids:
@@ -137,14 +140,17 @@ class UniqloSpider(scrapy.Spider):
 
         item_image_loader = ItemLoader(ProductImageItem())
         images_data = response_data['images']
-        for image_data in images_data['main'].values():
+
+        image_urls = [image_data["image"] for image_data in images_data['main'].values() if image_data.get("image")]
+        if not image_urls:
+            image_urls = [image_data["image"] for image_data in images_data['sub'] if image_data.get("image")]
+
+        delete_product_exclude_images(self.psql_conn, product_id=product_id, image_urls=image_urls)
+
+        for img_link in image_urls:
             item_image_loader.add_value("product_id", product_id)
-            item_image_loader.add_value("url", image_data['image'])
-        for image_data in images_data['sub']:
-            image_url = image_data.get('image')
-            if image_url:
-                item_image_loader.add_value("product_id", product_id)
-                item_image_loader.add_value("url", image_url)
+            item_image_loader.add_value("url", img_link)
+
         yield item_image_loader.load_item()
 
         breadcrumbs = response_data['breadcrumbs']

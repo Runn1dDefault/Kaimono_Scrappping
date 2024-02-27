@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Iterable
 
 
@@ -11,6 +12,50 @@ def build_rakuten_id(site_id: int | str) -> str:
 
 def get_site_id_from_db_id(_id: str) -> str:
     return _id.split('_')[-1]
+
+
+def product_ids_to_check_count(conn, site: str, check_time: datetime):
+    sql = """
+        SELECT 
+            COUNT(p.id) 
+        FROM products_product AS p
+        LEFT OUTER JOIN products_product_categories AS pc ON p.id = pc.product_id
+        LEFT OUTER JOIN products_category AS c ON pc.category_id = c.id
+        WHERE 
+            p.id like %s 
+            AND p.is_active 
+            AND c.deactivated == false 
+            AND p.modified_at < %s::timestamp
+        """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (f"{site}%", check_time.strftime("%Y-%m-%d %H:%M:%S")))
+            return cur.fetchone()
+    except Exception as e:
+        conn.rollback()
+        raise Exception(f"Failed to retrieve genres for scraping: {e}")
+
+
+def product_ids_to_check(conn, site: str, check_time: datetime, limit: int, offset: int = 0):
+    sql = """
+    SELECT p.id FROM products_product AS p
+    LEFT OUTER JOIN products_product_categories AS pc ON p.id = pc.product_id
+    INNER JOIN products_category AS c ON pc.category_id = c.id
+    WHERE 
+        p.id like %s 
+        AND p.is_active 
+        AND c.deactivated == false 
+        AND p.modified_at < %s::timestamp
+    ORDER BY p.modified_at
+    LIMIT %s OFFSET %s
+    """
+    try:
+        with conn.cursor() as cur:
+            cur.execute(sql, (f"{site}%", check_time.strftime("%Y-%m-%d %H:%M:%S"), limit, offset))
+            return cur.fetchall()
+    except Exception as e:
+        conn.rollback()
+        raise Exception(f"Failed to retrieve genres for scraping: {e}")
 
 
 def category_ids_for_scrape(conn, site: str):
@@ -84,17 +129,21 @@ def get_genres_tree(conn, current_genre_id):
     return collected_parents
 
 
-def delete_products_by_ids(conn, product_ids: Iterable[str]):
-    sql = "DELETE FROM products_product WHERE id IN %s"
+def delete_product_exclude_images(conn, product_id: str, image_urls: list[str]):
+    sql = """
+    DELETE FROM products_productimage AS img
+    WHERE ID IN (
+        SELECT id FROM products_productimage
+        WHERE product_id = %s AND url NOT IN %s
+    )
+    """
 
     try:
         with conn.cursor() as cur:
-            cur.execute(sql, (tuple(product_ids),))
+            cur.execude(sql, (product_id, tuple(image_urls)))
             cur.commit()
-    except Exception as e:
+    except Exception:
         conn.rollback()
-        raise Exception(f"Failed to delete products by ids: {e}")
-
 
 def tag_exists(conn, tag_id):
     sql = "SELECT EXISTS (SELECT 1 FROM products_tag WHERE id = %s)"

@@ -129,3 +129,12 @@ class ProductInventoryTagItem(scrapy.Item):
         fields = ("productinventory_id", "tag_id")
         match_fields = ("productinventory_id", "tag_id")
         do_update = False
+
+
+class ProductToRemoveItem(scrapy.Item):
+    id = scrapy.Field()
+
+    class Meta(PSQLItemMeta):
+        db_table = "products_productinventory_tags"
+        fields = ("product_id",)
+
