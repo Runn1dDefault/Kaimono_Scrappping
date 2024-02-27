@@ -284,7 +284,7 @@ class RakutenProductSpider(scrapy.Spider):
 
     API_URL = ("https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601"
                "?applicationId={app_id}&formatVersion=2&itemCode={item_code}"
-               "&genreInformationFlag=0&tagInformationFlag=0&availability=1&page={page}")
+               "&genreInformationFlag=0&tagInformationFlag=0&availability=1")
     CHECK_PAGE_LIMIT = 100
 
     def __init__(self, *args, **kwargs):
@@ -318,8 +318,7 @@ class RakutenProductSpider(scrapy.Spider):
                 yield scrapy.Request(
                     url=self.API_URL.format(
                         app_id=random_rakuten_app_id(self.RAKUTEN_APP_IDS),
-                        item_code=item_code,
-                        page=1
+                        item_code=item_code
                     ),
                     callback=self.parse,
                     meta={"product_id": product_id, "item_code": item_code},
