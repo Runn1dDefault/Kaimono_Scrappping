@@ -280,15 +280,11 @@ class RakutenProductSpider(scrapy.Spider):
         "ITEM_PIPELINES": {
             "kaimono.pipelines.PSQLRemovePipeline": 300,
         },
-        "HTTPERROR_ALLOWED_CODES": [404]
     }
 
     API_URL = ("https://app.rakuten.co.jp/services/api/IchibaItem/Search/20220601"
-               "?applicationId={app_id}&formatVersion=2&sort=+updateTimestamp&itemCode={item_code}"
-               "&genreInformationFlag=0&tagInformationFlag=1&availability=1&page={page}")
-
-    TAG_API_URL = RAKUTEN_BASE_URL + ("services/api/IchibaTag/Search/20140222?"
-                                      "applicationId={app_id}&formatVersion=2&tagId={tag_id}")
+               "?applicationId={app_id}&formatVersion=2&itemCode={item_code}"
+               "&genreInformationFlag=0&tagInformationFlag=0&availability=1&page={page}")
     CHECK_PAGE_LIMIT = 100
 
     def __init__(self, *args, **kwargs):
@@ -327,26 +323,15 @@ class RakutenProductSpider(scrapy.Spider):
                     ),
                     callback=self.parse,
                     meta={"product_id": product_id, "item_code": item_code},
-                    errback=self.err_back
                 )
 
             offset += self.CHECK_PAGE_LIMIT
 
     def parse(self, response: Response, **kwargs: Any) -> Any:
-        if response.status == 404:
+        response_data = json.loads(response.body)
+
+        if not response_data.get("items"):
             product_remove_loader = ItemLoader(ProductToRemoveItem())
             product_remove_loader.add_value("id", response.meta["product_id"])
             yield product_remove_loader.load_item()
 
-    def err_back(self, failure):
-        self.logger.error(repr(failure))
-
-        if not failure.check(HttpError):
-            return
-
-        response = failure.value.response
-
-        if response.status == 404:
-            product_remove_loader = ItemLoader(ProductToRemoveItem())
-            product_remove_loader.add_value("id", response.meta["product_id"])
-            yield product_remove_loader.load_item()
