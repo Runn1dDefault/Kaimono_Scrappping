@@ -30,7 +30,7 @@ def product_ids_to_check_count(conn, site: str, check_time: datetime) -> int:
     try:
         with conn.cursor() as cur:
             cur.execute(sql, (f"{site}%", check_time.strftime("%Y-%m-%d %H:%M:%S")))
-            return cur.fetchone()[0]
+            return int(cur.fetchone()[0])
     except Exception as e:
         conn.rollback()
         return 0
