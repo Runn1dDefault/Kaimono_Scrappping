@@ -14,7 +14,7 @@ from scrapy.http import Response
 from kaimono.items import (
     CategoryItem, TagItem,
     ProductItem, ProductCategoryItem,
-    ProductInventoryTagItem, ProductInventoryItem, ProductTagItem, ProductImageItem
+    ProductInventoryTagItem, ProductInventoryItem, ProductImageItem
 )
 from kaimono.settings import DATABASE_SETTINGS
 from kaimono.utils import build_uniqlo_id, category_ids_for_scrape, get_site_id_from_db_id
@@ -167,7 +167,6 @@ class UniqloSpider(scrapy.Spider):
 
         group_loader = ItemLoader(TagItem())
         tags_loader = ItemLoader(TagItem())
-        item_tags_loader = ItemLoader(ProductTagItem())
 
         for tag in response_data.get('tags') or []:
             group_id = build_uniqlo_id(tag['group'])
@@ -179,12 +178,8 @@ class UniqloSpider(scrapy.Spider):
             tags_loader.add_value("name", tag["tagName"])
             tags_loader.add_value("group_id", group_id)
 
-            item_tags_loader.add_value("product_id", product_id)
-            item_tags_loader.add_value("tag_id", tag_id)
-
         yield group_loader.load_item()
         yield tags_loader.load_item()
-        yield item_tags_loader.load_item()
 
         response.meta['colors'] = response_data['colors']
         response.meta['item_images'] = response_data['images']

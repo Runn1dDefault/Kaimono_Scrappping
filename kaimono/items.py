@@ -83,17 +83,6 @@ class ProductCategoryItem(scrapy.Item):
         do_update = False
 
 
-class ProductTagItem(scrapy.Item):
-    product_id = scrapy.Field()
-    tag_id = scrapy.Field()
-
-    class Meta(PSQLItemMeta):
-        db_table = "products_product_tags"
-        fields = ("product_id", "tag_id")
-        match_fields = ("product_id", "tag_id")
-        do_update = False
-
-
 class ProductImageItem(scrapy.Item):
     product_id = scrapy.Field()
     url = scrapy.Field()
