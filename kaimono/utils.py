@@ -24,7 +24,7 @@ def product_ids_to_check_count(conn, site: str, check_time: datetime):
         WHERE 
             p.id like %s 
             AND p.is_active 
-            AND c.deactivated == false 
+            AND NOT c.deactivated
             AND p.modified_at < %s::timestamp
         """
     try:
