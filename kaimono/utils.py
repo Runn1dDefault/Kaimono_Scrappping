@@ -38,16 +38,16 @@ def product_ids_to_check_count(conn, site: str, check_time: datetime):
 
 def product_ids_to_check(conn, site: str, check_time: datetime, limit: int, offset: int = 0):
     sql = """
-    SELECT p.id FROM products_product AS p
-    LEFT OUTER JOIN products_product_categories AS pc ON p.id = pc.product_id
+    SELECT DISTINCT ON (p.id) p.id FROM products_product AS p
+    INNER JOIN products_product_categories AS pc ON p.id = pc.product_id
     INNER JOIN products_category AS c ON pc.category_id = c.id
     WHERE 
-        p.id like %s 
+        p.id like %s
         AND p.is_active 
-        AND c.deactivated == false 
+        AND NOT c.deactivated
         AND p.modified_at < %s::timestamp
-    ORDER BY p.modified_at
-    LIMIT %s OFFSET %s
+    ORDER BY p.id, p.modified_at ASC
+    LIMIT 10 OFFSET 0;
     """
     try:
         with conn.cursor() as cur:
@@ -144,6 +144,7 @@ def delete_product_exclude_images(conn, product_id: str, image_urls: list[str]):
             cur.commit()
     except Exception:
         conn.rollback()
+
 
 def tag_exists(conn, tag_id):
     sql = "SELECT EXISTS (SELECT 1 FROM products_tag WHERE id = %s)"
