@@ -47,7 +47,7 @@ def product_ids_to_check(conn, site: str, check_time: datetime, limit: int, offs
         AND NOT c.deactivated
         AND p.modified_at < %s::timestamp
     ORDER BY p.id, p.modified_at ASC
-    LIMIT 10 OFFSET 0;
+    LIMIT %s OFFSET %s;
     """
     try:
         with conn.cursor() as cur:
