@@ -36,7 +36,7 @@ class RakutenCategorySpider(scrapy.Spider):
     custom_settings = {
         'LOG_LEVEL': 'INFO',
         "DEFAULT_REQUEST_HEADERS": {"Content-Type": "application/json"},
-        "CONCURRENT_REQUESTS": len(RAKUTEN_APP_IDS)
+        "CONCURRENT_REQUESTS": len(RAKUTEN_APP_IDS) * 2
     }
     API_URL = RAKUTEN_BASE_URL + ("services/api/IchibaGenre/Search/20120723"
                                   "?applicationId={app_id}&formatVersion=2&genreId={genre_id}")
@@ -265,9 +265,8 @@ class RakutenProductSpider(scrapy.Spider):
     RAKUTEN_APP_IDS = (
         "1006081949539677212",
         "1032684706123538391",
-        "1027393930619954222",
-        '1052001095841946356',
-        '1053826134919859121'
+        "1074124474108574900",
+        "1066790171671197123"
     )
 
     custom_settings = {
@@ -275,8 +274,8 @@ class RakutenProductSpider(scrapy.Spider):
         "DEFAULT_REQUEST_HEADERS": {
             "Content-Type": "application/json"
         },
-        "CONCURRENT_REQUESTS": len(RAKUTEN_APP_IDS) * 2,
-        "DOWNLOAD_DELAY": 0.2,
+        "CONCURRENT_REQUESTS": len(RAKUTEN_APP_IDS) * 3,
+        "DOWNLOAD_DELAY": 0.3,
         "ITEM_PIPELINES": {
             "kaimono.pipelines.PSQLRemovePipeline": 300,
         },
